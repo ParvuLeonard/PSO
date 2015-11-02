@@ -2,4 +2,3 @@
 *.o
 *.a
 bochs-2.6.8/
-.gitignore~
