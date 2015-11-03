@@ -93,6 +93,11 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    /* Added for Priority Scheduler */
+    int initial_priority;
+    struct list aquired_locks;
+    struct list donation_list;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -137,5 +142,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+char* thread_status(enum thread_status status);
+
+/* Function for thread priority comparison */
+list_less_func thread_priority_comparison;
 
 #endif /* threads/thread.h */

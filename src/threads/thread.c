@@ -245,7 +245,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, thread_priority_comparison, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -316,7 +316,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, thread_priority_comparison, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -467,8 +467,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  t->priority = t->initial_priority = priority;
   t->magic = THREAD_MAGIC;
+
+  list_init(&(t->aquired_locks));
+  list_init(&(t->donation_list));
+
   list_push_back (&all_list, &t->allelem);
 }
 
@@ -581,6 +585,41 @@ allocate_tid (void)
 
   return tid;
 }
+
+bool 
+thread_priority_comparison (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
+{
+    struct thread *first_thread = list_entry(first, struct thread, elem);
+    struct thread *second_thread = list_entry(second, struct thread, elem);
+    return first_thread->priority > second_thread->priority;
+}
+
+char* 
+thread_status(enum thread_status status)
+{
+  char* str_status=malloc(30);
+
+  switch (status) {
+  case THREAD_RUNNING:     /* Running thread. */
+      strlcpy(str_status, "THREAD_RUNNING", 29);
+      break;
+  case THREAD_READY:       /* Not running but ready to run. */
+      strlcpy(str_status, "THREAD_READY", 29);
+      break;
+  case THREAD_BLOCKED:     /* Waiting for an event to trigger. */
+      strlcpy(str_status, "THREAD_BLOCKED", 29);
+      break;
+  case THREAD_DYING:        /* About to be destroyed. */
+      strlcpy(str_status, "THREAD_DYING", 29);
+      break;
+  default:
+    strlcpy(str_status, "THREAD_UNKNOWN_STATUS", 29);
+    break;
+  }
+
+  return str_status;
+}
+
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
