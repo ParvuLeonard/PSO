@@ -178,7 +178,8 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
-  sema_init (&lock->semaphore, 1);
+  lock->is_open = true;
+  list_init(&(lock->waiters));
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -191,14 +192,25 @@ lock_init (struct lock *lock)
    we need to sleep. */
 void
 lock_acquire (struct lock *lock)
-{
+{ 
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  sema_down (&lock->semaphore);
+  old_level = intr_disable ();
+  while (lock->is_open == false) 
+  {
+      list_insert_ordered(&lock->waiters, &thread_current ()->elem, thread_priority_comparison, NULL);
+      thread_block ();
+  }
+  lock->is_open = false;
+
   lock->holder = thread_current ();
   list_push_back (&(lock->holder->aquired_locks), &(lock->elem));
+
+  intr_set_level (old_level);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -210,14 +222,25 @@ lock_acquire (struct lock *lock)
 bool
 lock_try_acquire (struct lock *lock)
 {
-  bool success;
+  enum intr_level old_level;
+  bool success = false;
 
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
 
-  success = sema_try_down (&lock->semaphore);
-  if (success)
+  old_level = intr_disable ();
+
+  if (lock->is_open == true) {
+    lock->is_open = false;
+    success = true;
+  }
+
+  if (success) {
     lock->holder = thread_current ();
+    list_push_back (&(lock->holder->aquired_locks), &(lock->elem));
+  }
+
+  intr_set_level (old_level);
   return success;
 }
 
@@ -229,11 +252,19 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
+  old_level = intr_disable ();
+
+  if (!list_empty (&lock->waiters)) 
+    thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
   lock->holder = NULL;
-  sema_up (&lock->semaphore);
+  lock->is_open = true;
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false

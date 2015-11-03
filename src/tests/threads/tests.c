@@ -39,6 +39,9 @@ static const struct test tests[] =
     {"mlfqs-nice-10", test_mlfqs_nice_10},
     {"mlfqs-block", test_mlfqs_block},
     {"create-threads", test_create_threads},
+    {"my_test_synch_sema", my_test_synch_sema},
+    {"my_test_synch_lock", my_test_synch_lock},
+    {"my_test_synch_cond", my_test_synch_cond},
   };
 
 static const char *test_name;
