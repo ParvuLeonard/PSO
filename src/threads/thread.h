@@ -95,7 +95,7 @@ struct thread
 
     /* Added for Priority Scheduler */
     int initial_priority;
-    struct list aquired_locks;
+    struct list acquired_locks;
     struct list donation_list;
 
 #ifdef USERPROG

@@ -208,7 +208,7 @@ lock_acquire (struct lock *lock)
   lock->is_open = false;
 
   lock->holder = thread_current ();
-  list_push_back (&(lock->holder->aquired_locks), &(lock->elem));
+  list_push_back (&(lock->holder->acquired_locks), &(lock->elem));
 
   intr_set_level (old_level);
 }
@@ -237,7 +237,7 @@ lock_try_acquire (struct lock *lock)
 
   if (success) {
     lock->holder = thread_current ();
-    list_push_back (&(lock->holder->aquired_locks), &(lock->elem));
+    list_push_back (&(lock->holder->acquired_locks), &(lock->elem));
   }
 
   intr_set_level (old_level);
@@ -259,10 +259,12 @@ lock_release (struct lock *lock)
 
   old_level = intr_disable ();
 
-  if (!list_empty (&lock->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
   lock->holder = NULL;
   lock->is_open = true;
+  list_remove(&(lock->elem)); // Remove the lock from holder's acquired_locks list
+
+  if (!list_empty (&lock->waiters)) 
+    thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
 
   intr_set_level (old_level);
 }

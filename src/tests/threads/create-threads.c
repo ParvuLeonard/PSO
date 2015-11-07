@@ -17,7 +17,7 @@ test_create_threads(void)
 		char name[16];
 		snprintf (name, sizeof name, "my_thread %d", i);
 		printf("Creating thread: %s\n", name);
-		thread_create (name, PRI_DEFAULT, thread_test, NULL);
+		thread_create (name, PRI_DEFAULT + i * 2, thread_test, NULL);
 	}
 	msg ("Thread \"%s\" finished creating %d threads", thread_current()->name, thread_cnt);
 

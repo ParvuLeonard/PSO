@@ -247,6 +247,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered(&ready_list, &t->elem, thread_priority_comparison, NULL);
   t->status = THREAD_READY;
+
   intr_set_level (old_level);
 }
 
@@ -470,7 +471,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = t->initial_priority = priority;
   t->magic = THREAD_MAGIC;
 
-  list_init(&(t->aquired_locks));
+  list_init(&(t->acquired_locks));
   list_init(&(t->donation_list));
 
   list_push_back (&all_list, &t->allelem);
