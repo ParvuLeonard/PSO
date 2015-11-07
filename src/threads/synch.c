@@ -32,6 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static int new_priority(struct thread *thread);
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -263,6 +265,8 @@ lock_release (struct lock *lock)
   lock->is_open = true;
   list_remove(&(lock->elem)); // Remove the lock from holder's acquired_locks list
 
+  lock->holder = new_priority(lock->holder);  // Search for new priority
+
   if (!list_empty (&lock->waiters)) 
     thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
 
@@ -369,4 +373,24 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/* 
+*/
+static int
+new_priority(struct thread *thread)
+{
+  int max_priority = thread->initial_priority;
+  struct list_elem *e;
+  for (e = list_begin (&thread->acquired_locks); e != list_end (&thread->acquired_locks); e = list_next (e))
+  {
+    struct lock *lock = list_entry (e, struct lock, elem);
+    if(!list_empty(&lock->waiters)) 
+    {
+      struct list_elem *thread_elem = list_front (&lock->waiters);
+      struct thread *first_thread = list_entry (thread_elem, struct thread, elem);
+      max_priority = max_priority < first_thread->priority ? first_thread->priority : max_priority;
+    }
+  }
+  return max_priority;
 }
