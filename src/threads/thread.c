@@ -209,6 +209,8 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  thread_test_preemption();
+
   return tid;
 }
 
@@ -344,7 +346,8 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  thread_current()->initial_priority = thread_current ()->priority = new_priority;
+  thread_test_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -468,7 +471,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = t->initial_priority = priority;
+  t->priority = priority; 
+  t->initial_priority = priority;
   t->magic = THREAD_MAGIC;
 
   list_init(&(t->acquired_locks));
@@ -587,6 +591,34 @@ allocate_tid (void)
   return tid;
 }
 
+/* Remove a thread from ready_list and reinsert it afterwards.
+   This is necessary if the thread's priority has changed and
+   it isn't anymore in the right position.
+*/
+void 
+thread_reposition_in_ready_list(struct thread* thread)
+{
+  list_remove (&(thread->elem));
+  list_insert_ordered(&ready_list, &(thread->elem), thread_priority_comparison, NULL);    
+}
+
+void
+thread_test_preemption(void)
+{
+  enum intr_level old_level;
+
+  old_level = intr_disable();
+
+  if (!list_empty(&ready_list) && 
+      thread_current()->priority < (list_entry(list_front(&ready_list), struct thread, elem))->priority)
+  {
+    thread_yield();
+  }
+
+  intr_set_level(old_level);
+}
+
+/* Compares two threads based on their priority. */
 bool 
 thread_priority_comparison (const struct list_elem *first, const struct list_elem *second, void *aux UNUSED)
 {

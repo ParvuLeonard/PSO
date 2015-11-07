@@ -149,6 +149,10 @@ int thread_get_load_avg (void);
 
 char* thread_status(enum thread_status status);
 
+/* Added for Priority Scheduler. */
+void thread_test_preemption(void);
+void thread_reposition_in_ready_list(struct thread*);
+
 /* Function for thread priority comparison */
 list_less_func thread_priority_comparison;
 bool get_thread_with_less_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);

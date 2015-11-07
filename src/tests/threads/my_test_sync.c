@@ -19,7 +19,7 @@
 
 #define INIT_VALUE_SEMA 1
 
-#define TIME_TO_SLEEP 100
+#define TIME_TO_SLEEP 200
 
 static void thread_sema(void*);
 static void thread_lock(void*);
@@ -97,7 +97,8 @@ my_test_synch_lock(void)
 		struct lock_arg *arg = (struct lock_arg*) malloc (sizeof(struct lock_arg));
 		arg->th_id = i;
 		arg->l = &mutex;
-		thread_create(name, PRI_DEFAULT, thread_lock, (void*) arg);
+		thread_create(name, PRI_DEFAULT + i, thread_lock, (void*) arg);
+		msg("Created thread %d.\n", i);
 	}
 
 	timer_sleep(TIME_TO_SLEEP*(NO_OF_THREADS_LOCK+1));

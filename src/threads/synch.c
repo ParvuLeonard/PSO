@@ -204,6 +204,17 @@ lock_acquire (struct lock *lock)
   old_level = intr_disable ();
   while (lock->is_open == false) 
   {
+      ASSERT(lock->holder != NULL);
+
+      if (thread_current()->priority > lock->holder->priority) {
+        /* Do simple priority donation. */
+        lock->holder->priority = thread_current()->priority;
+        if (lock->holder->status == THREAD_READY) {
+          /* We need to reposition the thread in ready_list because it's priority has changed. */
+          thread_reposition_in_ready_list(lock->holder);      
+        }
+      }
+
       list_insert_ordered(&lock->waiters, &thread_current ()->elem, thread_priority_comparison, NULL);
       thread_block ();
   }
@@ -254,6 +265,7 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  int initial_priority;
   enum intr_level old_level;
 
   ASSERT (lock != NULL);
@@ -261,14 +273,21 @@ lock_release (struct lock *lock)
 
   old_level = intr_disable ();
 
+  list_remove(&(lock->elem)); // Remove the lock from holder's acquired_locks list
+  initial_priority = lock->holder->priority;
+  lock->holder->priority = new_priority(lock->holder);  // Search for new priority
+  if (initial_priority != lock->holder->priority && lock->holder->status == THREAD_READY) {
+    /* We need to reposition the thread in ready_list because it's priority has changed. */
+    thread_reposition_in_ready_list(lock->holder);
+  }
+  
   lock->holder = NULL;
   lock->is_open = true;
-  list_remove(&(lock->elem)); // Remove the lock from holder's acquired_locks list
 
-  lock->holder = new_priority(lock->holder);  // Search for new priority
-
-  if (!list_empty (&lock->waiters)) 
+  if (!list_empty (&lock->waiters)) {
     thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
+    thread_test_preemption();
+  }
 
   intr_set_level (old_level);
 }
@@ -376,6 +395,9 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 }
 
 /* 
+  Compute a thread's new priority after a lock release. It's 
+  new priority will be it's initial priority or the maxim 
+  priority from donations.
 */
 static int
 new_priority(struct thread *thread)
