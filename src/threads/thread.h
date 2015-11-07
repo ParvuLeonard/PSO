@@ -89,6 +89,10 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+	
+		/* Timpul la care trebuie trebuie sa se trezeasca pentru situatia in
+			 care s-a apelat functia timer_sleep() si a fost pus in sleeping_list*/
+		int64_t wakeup_time;
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -147,5 +151,6 @@ char* thread_status(enum thread_status status);
 
 /* Function for thread priority comparison */
 list_less_func thread_priority_comparison;
+bool get_thread_with_less_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */

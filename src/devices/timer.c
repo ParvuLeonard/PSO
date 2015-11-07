@@ -1,4 +1,5 @@
 #include "devices/timer.h"
+#include <kernel/list.h>
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -16,6 +17,9 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+/* Lista threadurilor pentru care s-a apelat timer_sleep() */
+struct list sleeping_list;
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -35,6 +39,7 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
+	list_init(&sleeping_list);
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
@@ -90,10 +95,24 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
+	struct thread *current_thread;
+	enum intr_level old_level;
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+	if (ticks <= 0)
+	{
+		return;
+	}
+	old_level = intr_disable ();
+
+	current_thread = thread_current();
+	current_thread->wakeup_time = start + ticks;
+
+	list_insert_ordered(&sleeping_list, &current_thread->elem, 
+		get_thread_with_less_ticks, NULL);
+	thread_block();
+
+	intr_set_level(old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -170,8 +189,23 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+	struct thread *thread;
+	struct list_elem *list_elem;
+	
   ticks++;
   thread_tick ();
+
+	while(!list_empty(&sleeping_list))
+	{
+		list_elem = list_front(&sleeping_list);
+		thread = list_entry(list_elem, struct thread, elem);
+		if(thread->wakeup_time > ticks)
+		{
+			break;
+		}
+		list_remove(list_elem);
+		thread_unblock(thread);
+	}
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
