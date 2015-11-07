@@ -12,6 +12,7 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/malloc.h"
+#include "tests/threads/tests.h"
 
 #define NO_OF_THREADS_SEMA 3
 #define NO_OF_THREADS_LOCK 10
@@ -21,9 +22,10 @@
 
 #define TIME_TO_SLEEP 200
 
+void my_test_synch_sema(void);
+void my_test_synch_lock(void);
 static void thread_sema(void*);
 static void thread_lock(void*);
-static void thread_cond(void*);
 
 
 /* Study SEMAPHORES */
@@ -59,7 +61,6 @@ static void thread_sema(void* arg)
 {
 	struct sema_arg *sa = (struct sema_arg*) arg;
 
-	int th_id = sa->th_id;
 	struct semaphore *s = sa->sema;
 
 	printf("[thread_sema] Thread \"%s\" BEFORE the critical section\n", thread_current()->name);
@@ -108,7 +109,6 @@ static void thread_lock(void* arg)
 {
 	struct lock_arg *la = (struct lock_arg*) arg;
 
-	int th_id = la->th_id;
 	struct lock *mutex = la->l;
 
 	printf("[thread_lock] Thread \"%s\" BEFORE the critical section\n", thread_current()->name);
@@ -122,20 +122,4 @@ static void thread_lock(void* arg)
 	lock_release(mutex);
 
 	printf("[thread_lock] Thread \"%s\" AFTER the critical region\n", thread_current()->name);
-}
-
-
-/* Study CONDITION VARIABLES */
-
-void
-my_test_synch_cond(void)
-{
-
-}
-
-static void thread_cond(void* arg)
-{
-	int th_id = (int) arg;
-
-	printf("Thread %d in function\n", th_id);
 }

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "devices/timer.h"
 #include "threads/interrupt.h"
+#include "tests/threads/tests.h"
 
 static void thread_test (void *);
 
@@ -28,7 +29,7 @@ test_create_threads(void)
 	msg ("Thread \"%s\" exits its function", thread_current()->name);
 }
 
-static void print_thread_info(struct thread* t, void* aux)
+static void print_thread_info(struct thread* t, void* aux UNUSED)
 {
 	printf("Thread \"%s\" info: [name=%s, tid=%d, status=%s priority=%d]\n", t->name, t->name, t->tid, thread_status(t->status), t->priority);
 }

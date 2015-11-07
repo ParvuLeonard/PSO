@@ -41,7 +41,6 @@ static const struct test tests[] =
     {"create-threads", test_create_threads},
     {"my_test_synch_sema", my_test_synch_sema},
     {"my_test_synch_lock", my_test_synch_lock},
-    {"my_test_synch_cond", my_test_synch_cond},
   };
 
 static const char *test_name;
