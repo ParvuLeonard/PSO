@@ -32,7 +32,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
-static int new_priority(struct thread *thread);
+static void update_priority_on_acquire(struct thread*);
+static int compute_priority_on_release(struct thread*);
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -206,18 +207,19 @@ lock_acquire (struct lock *lock)
   {
       ASSERT(lock->holder != NULL);
 
+      /* Test if we should make a priority donation. */
       if (thread_current()->priority > lock->holder->priority) {
-        /* Do simple priority donation. */
-        lock->holder->priority = thread_current()->priority;
-        if (lock->holder->status == THREAD_READY) {
-          /* We need to reposition the thread in ready_list because it's priority has changed. */
-          thread_reposition_in_ready_list(lock->holder);      
-        }
+        thread_current()->waiting_on_lock = lock;
+        update_priority_on_acquire(thread_current());
       }
 
+      /* Block the current thread. */
       list_insert_ordered(&lock->waiters, &thread_current ()->elem, thread_priority_comparison, NULL);
       thread_block ();
+
+      thread_current()->waiting_on_lock = NULL;
   }
+
   lock->is_open = false;
 
   lock->holder = thread_current ();
@@ -265,18 +267,20 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
-  int initial_priority;
   enum intr_level old_level;
 
   ASSERT (lock != NULL);
+  ASSERT (lock->holder != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
   old_level = intr_disable ();
 
-  list_remove(&(lock->elem)); // Remove the lock from holder's acquired_locks list
-  initial_priority = lock->holder->priority;
-  lock->holder->priority = new_priority(lock->holder);  // Search for new priority
-  if (initial_priority != lock->holder->priority && lock->holder->status == THREAD_READY) {
+  /* Remove the lock from holder's acquired_locks list. */
+  list_remove(&(lock->elem)); 
+  /* Recompute the holder's priority. This is necessary
+     in case that the holder received priority donations. */
+  lock->holder->priority = compute_priority_on_release(lock->holder);  // Search for new priority
+  if (lock->holder->status == THREAD_READY) {
     /* We need to reposition the thread in ready_list because it's priority has changed. */
     thread_reposition_in_ready_list(lock->holder);
   }
@@ -284,8 +288,15 @@ lock_release (struct lock *lock)
   lock->holder = NULL;
   lock->is_open = true;
 
-  if (!list_empty (&lock->waiters)) {
+  if (!list_empty(&lock->waiters)) {
+    /* Wake up the highest priority waiting thread. The list
+       it's sorted after thread's priority, so wake up the
+       first thread in the waiting list.                   
+    */
     thread_unblock (list_entry (list_pop_front (&lock->waiters), struct thread, elem));
+    /* Test if the waked up thread has priority greater than 
+       the current thread.
+    */
     thread_test_preemption();
   }
 
@@ -400,8 +411,10 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   priority from donations.
 */
 static int
-new_priority(struct thread *thread)
+compute_priority_on_release(struct thread *thread)
 {
+  ASSERT(thread != NULL);
+
   int max_priority = thread->initial_priority;
   struct list_elem *e;
   for (e = list_begin (&thread->acquired_locks); e != list_end (&thread->acquired_locks); e = list_next (e))
@@ -415,4 +428,36 @@ new_priority(struct thread *thread)
     }
   }
   return max_priority;
+}
+
+/*
+  Update a thread priority, that is the holder of a lock,
+  when another thread tried to acquire the lock and it was
+  blocked => priority donation. If it is necessary, a 
+  propagation of the donation is also made.
+*/
+static void
+update_priority_on_acquire(struct thread* thread)
+{
+  ASSERT(thread != NULL);
+  struct lock* lock = thread->waiting_on_lock;
+  ASSERT(lock != NULL);
+  struct thread* holder = thread->waiting_on_lock->holder;
+  ASSERT(holder != NULL);
+
+  if(thread->priority > holder->priority)
+  {
+    holder->priority = thread->priority;
+    if(holder->status == THREAD_READY)
+    {
+      thread_reposition_in_ready_list(holder);
+      return;
+    } 
+    if(holder->status == THREAD_BLOCKED && holder->waiting_on_lock != NULL)
+    {
+      list_remove(&(holder->elem));
+      list_insert_ordered(&(holder->waiting_on_lock->waiters), &(holder->elem), thread_priority_comparison, NULL);
+      update_priority_on_acquire(holder);
+    }
+  }
 }
