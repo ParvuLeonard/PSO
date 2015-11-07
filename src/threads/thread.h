@@ -98,9 +98,9 @@ struct thread
     struct list_elem elem;              /* List element. */
 
     /* Added for Priority Scheduler */
-    int initial_priority;
+    int initial_priority;               /* Thread's initial priority, not altered by donations. */.
     struct list acquired_locks;
-    struct list donation_list;
+    struct lock* waiting_on_lock;       /* The lock for which the thread was blocked. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

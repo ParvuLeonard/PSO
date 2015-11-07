@@ -346,7 +346,14 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current()->initial_priority = thread_current ()->priority = new_priority;
+  if(thread_current()->initial_priority != thread_current ()->priority) 
+  {
+    thread_current()->initial_priority = new_priority;
+  } 
+  else 
+  {
+    thread_current()->initial_priority = thread_current ()->priority = new_priority;
+  }
   thread_test_preemption();
 }
 
@@ -476,7 +483,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   list_init(&(t->acquired_locks));
-  list_init(&(t->donation_list));
+
+  t->waiting_on_lock = NULL;
 
   list_push_back (&all_list, &t->allelem);
 }
@@ -602,6 +610,9 @@ thread_reposition_in_ready_list(struct thread* thread)
   list_insert_ordered(&ready_list, &(thread->elem), thread_priority_comparison, NULL);    
 }
 
+/* Suspend the current thread if there is another thread ready
+   with a priority greater than the current thread's.
+*/
 void
 thread_test_preemption(void)
 {
