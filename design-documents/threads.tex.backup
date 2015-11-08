@@ -1,0 +1,283 @@
+
+\documentclass[a4paper,12pt]{report}
+
+\input{os-design.sty}
+
+% \newcommand{\OSName}{\textit{Nachos}}
+\newcommand{\OSName}{\textit{Pintos}}
+
+\title{Design-ul Sistemului de Operare \OSName{}}
+
+\author{Butiri Dan, Lazar Laurentiu, Pârvu Leonard}
+
+\onehalfspacing
+
+\begin{document}
+
+\selectlanguage{english}
+%\selectlanguage{romanian}
+
+
+\maketitle
+
+\chapter{Prezentare generală}
+
+\section{Echipa}
+
+\begin{enumerate}
+	\item Butiri Dan
+	    \begin{enumerate}
+	     \item Threads: Priority Scheduler
+	    \end{enumerate}
+
+	\item Lazar Laurentiu
+	    \begin{enumerate}
+	     \item Threads: Priority Scheduler
+	    \end{enumerate}
+	    
+	\item Pârvu Leonard
+	    \begin{enumerate}
+	     \item Threads: Alarm Clock
+	     \item Threads: Multilevel Feedback Queue Scheduler
+	    \end{enumerate}
+\end{enumerate}
+
+
+\chapter{Design-ul Modulului \textit{Threads}}
+
+\section{Alarm Clock}
+
+  Aceasta prima parte a proiectului consta in reimplementarea functiei \textit{timer\_sleep()} din
+\textit{"devices/timer.c"}. Implementarea initiala presupune ocuparea procesorului atunci cand se apeleaza 
+aceasta functie pentru un thread, el fiind pastrat in \textit{ready\_list}.
+
+\subsection{Structuri de date}
+Pentru a evita acest busy waiting am ales sa adaugam structurii thread din \textit{"threads/thread.h"} un field
+\textit{wakeup\_time} pentru a memora timpul cand trebuie sa se trezeasca threadul respectiv.
+
+De asemenea, in \textit{"devices/timer.c"}, se va adauga o noua lista, \textit{sleeping\_list}, ce contine toate threaduri
+pentru care a fost apelata functia \textit{timer\_sleep()}.
+
+Astfel atunci cand pentru un thread se apeleaza functia \textit{timer\_sleep()}, acesta va fi mutat in 
+\textit{sleeping\_list} in loc sa fie pastrat in \textit{ready\_list}, situatie in care tine procesorul ocupat.
+
+\begin{lstlisting}
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+		int64_t wakeup_time;
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+\end{lstlisting}
+
+\subsection{Algoritmi}
+  Atunci cand se va apela functia \textit{timer\_sleep()}, se va lua threadul curent, se va calcula si memora timpul
+la care trebuie sa se trezeasca, timp\_curent + sleep\_time, se va insera in lista \textit{sleeping\_list} si se va 
+scoate din lista \textit{ready\_list}.
+
+La fiecare apel al functie \textit{timer\_interrupt()} se va parcurge lista \textit{sleeping\_list} pentru a vedea daca
+exista un thread ce trebuie trezit si introdus in lista de threaduri {ready\_list}.
+
+Pentru a minimiza timpul petrecut pentru a parcurge lista {sleeping\_list}, in cadrul metodei 
+\textit{timer\_interrupt()} se vor pastra threadurile sortate crescator dupa timpul la care trebuie sa se
+trezeasca. Astfel, nu trebuie parcursa intreaga lista. Se va parcurge lista doar pana cand intalnim un 
+thread care trebuie trezit, dupa acela sigur nefiind alt thread ce trebuie trezit. In cazul in care 
+nu trebuie trezit niciun thread, lista se va parcurge in totalitate.
+\subsection{Sincronizare}
+Pentru a evita conditiile de cursa atunci cand mai multe threaduri apeleaza \textit{timer\_sleep()}, se vor 
+dezactiva intreruperile temporar, pana la terminarea functiei.
+
+Astfel, nu pot aparea intreruperi atunci cand se efectueaza un apel la functia \textit{timer\_sleep()}. Nu exista
+conditii de cursa.
+
+\section{Priority Scheduler}
+
+\subsection{Structuri de date}
+Deoarece prioritatea unui thread se poate schimba, am ales sa adaugam un nou camp intreg \textit{initial\_priority},
+in structura thread, pentru a retine prioritatea unui thread inainte de a primii donatii. 
+
+Tot in structura thread, am adaugat un pointer catre o structura de tip lock, in care se va retine lacatul 
+dupa care asteapta threadul curent. Acest lacat, avand un \textit{lock holder}, mai ajuta thread-ul curent si 
+prin faptul ca retine thread-ul care a primit donatie de prioritate de la thread-ul curent (un thread poate, 
+la un moment dat, sa astepte dupa un singur lacat, si deci, sa ofere donatie directa unui singur thread).
+
+Deasemenea, un thread a mai primit si o lista de lacate pe care le-a obtinut, aceasta lista fiind necesara la
+recalcularea prioritatilor dupa eliberarea unui lacat.
+\begin{lstlisting}
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+     
+    /* Added for Priority Scheduler */
+    int initial_priority;               /* Thread's initial priority, 
+					   not altered by donations. */
+    struct list acquired_locks;
+    struct lock* waiting_on_lock;       /* The lock for which the thread 
+					   was blocked. */
+
+  #ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+  #endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+\end{lstlisting}
+
+Strucutra de lacat s-a schimbat prin faptul ca lacatele sunt implementate fara ajutorul semafoarelor, deci campurile
+dintr-un semafor apar acum si in structura de lacat. Deasemenea, in structura de lacat a fost nevoie de un
+element pentru liste, cu ajutorul caruia un lacat este adaugat in lista de \textit{acquired\_locks} a unui thread.
+
+\begin{lstlisting}
+struct lock 
+  {
+    struct thread *holder; /* Thread holding lock (for debugging). */
+
+    /* Added for Priority Scheduler */
+    bool is_open;          /* If is_open == true, the 
+		              lock can be acquired. */
+    struct list waiters;
+
+    struct list_elem elem; /* List element for a thread 
+		              acquired_locks list */
+  };
+\end{lstlisting}
+
+
+\subsection{Algoritmi}
+Pentru a planifica intotdeauna thead-ul cu prioritatea cea mai mare, thread-urile sunt pastrate in \textit{ready\_list}
+in ordinea prioritatilor. La inserarea unui thread cu o prioritatea care mai exista in \textit{ready\_list}, acesta va
+fi pus in spatele tuturor thread-urilor cu care este egal ca prioritate. Intotdeauna va fi planificat primul thread din 
+\textit{ready\_list}.
+
+\section{Multilevel Feedback Queue Scheduler}
+Acest planificator decide ce threaduri vor rula modificand dinamic prioritatile acestora pe baza a doua
+caracteristici ale lor: cat de dragute sunt, \textit{niceness}, si cat de consumatoare de procesor sunt, \textit{recent\_cpu}.
+
+\subsection{Structuri de date}
+Pentru a realiza acest lucru am adaugat in structura de thread din \textit{"threads/thread.h"} doua campuri care
+sa inglobeze cele doua caracteristici pe baza carora se recalculeaza prioritatile. 
+
+\begin{lstlisting}
+struct thread
+  {
+    /* Owned by thread.c. */
+    tid_t tid;                          /* Thread identifier. */
+    enum thread_status status;          /* Thread state. */
+    char name[16];                      /* Name (for debugging purposes). */
+    uint8_t *stack;                     /* Saved stack pointer. */
+    int priority;                       /* Priority. */
+    struct list_elem allelem;           /* List element for all threads list. */
+
+		int64_t wakeup_time;
+		int niceness;
+		int recent_cpu;
+
+    /* Shared between thread.c and synch.c. */
+    struct list_elem elem;              /* List element. */
+
+#ifdef USERPROG
+    /* Owned by userprog/process.c. */
+    uint32_t *pagedir;                  /* Page directory. */
+#endif
+
+    /* Owned by thread.c. */
+    unsigned magic;                     /* Detects stack overflow. */
+  };
+
+\end{lstlisting}
+
+De asemenea se va adauga o variabila globala, \textit{loag\_avg}.
+
+\subsection{Algoritmi}
+Presupunem ca threadurile A, B si C au niceness 0, 1 si 2. Fiecare au o valoare de \textit{recent\_cpu} de 0. Se 
+completeze tabelul de mai jos aratand decizile de planificare, prioritatile si valorile de 
+\textit{recent\_cpu} pentru fiecare thread pentru numarul de tickuri.
+
+\begin{center}
+ \begin{tabular}{||c c c c||} 
+ \hline
+ timer ticks & recent\_cpu  A B C & priority  A B C & thread to run \\ [0.5ex]
+  & A B C & A B C & \\
+ \hline\hline
+ 0 & 0 0 0& 63 61 59 & A \\ 
+ \hline
+ 4 & 4 0 0& 62 61 59 & A \\
+ \hline
+ 8 & 8 0 0& 61 61 59 & A \\
+ \hline
+ 12 & 12 0 0& 60 61 59 & B \\
+ \hline
+ 16 & 12 4 0& 60 60 59 & A \\
+ \hline
+ 20 & 16 4 0& 59 60 59 & B \\
+ \hline
+ 24 & 16 8 0& 59 59 59 & A \\
+ \hline
+ 28 & 20 8 0& 58 59 59 & B \\
+ \hline
+ 32 & 20 12 0& 58 58 59 & C \\
+ \hline
+ 36 & 20 12 4& 58 58 58 & A \\
+ \hline
+\end{tabular}
+\end{center}
+
+Performanta acestui planificator o sa fie afectata deoarece de fiecare data cand trebuie sa se faca
+schedule trebuie sa se recalculeze prioritatile. Acest lucru conduce la introducerea unor intarzieri.
+
+Formulele pentru calcularea valorilor pentru \textit{priority}, \textit{niceness} si \textit{ready\_threads} presupun numere 
+intregi, insa pentru calcularea valorilor \textit{recent\_cpu} si \textit{load\_avg} trebuie folosite numere reale. Pintosul 
+nu pune la dispozitie suport pentru aritmetica in virgula mobila. Astfel calculele efectuate cu numere
+reale trebuie simulate utilizand numere intregi. 
+
+Astfel se va crea un header numit \textit{fixed\_point\_arithmetic.h} care va contine macrourile necesare
+executarii operatiilor cu numere reale.
+
+Fie x si y numere in fix point arithmetic, n un numar intreg, p + q = 31 si f fiind 1 << q. Astfel se 
+vor implementa macrouri pentru urmatoarele operatii:
+\begin{description}
+\item[$\bullet$] conversia lui n la fix point: n * f
+\item[$\bullet$] conversia lui x la intreg (rotunjire spre zero): x / f
+\item[$\bullet$] conversia lui x la intreg (rotunjire spre cel mai apropiat) : (x + f / 2) / f daca x>=0 sau (x - f / 2) / f daca x<=0
+\item[$\bullet$] suma dintre x si y: x + y
+\item[$\bullet$] diferenta dintre x si y: x - y
+\item[$\bullet$] suma dintre x si n: x + n * f
+\item[$\bullet$] diferenta dintre x si n: x - n * f
+\item[$\bullet$] inmultirea dintre x si y: ((int64\_t)x) * y / f
+\item[$\bullet$] inmultirea dintre x si n: x * n
+\item[$\bullet$] impartirea lui x la y: ((int64\_t)x) * f / y
+\item[$\bullet$] imparitrea lui x la n: x / n
+\end{description}
+
+De asemenea trebuie ignorate apelurile la functia \textit{set\_priority} si implementate functiile 
+\textit{thread\_set\_nice}, \textit{thread\_get\_nice}, \textit{get\_load\_avg}, \textit{get\_recent\_cpu}, \textit{increase\_recent\_cpu}, \textit{calc\_recent\_cpu}.
+
+\end{document}

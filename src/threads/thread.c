@@ -641,7 +641,7 @@ thread_priority_comparison (const struct list_elem *first, const struct list_ele
 char* 
 thread_status(enum thread_status status)
 {
-  char* str_status=malloc(30);
+  char* str_status = (char*) malloc(30);
 
   switch (status) {
   case THREAD_RUNNING:     /* Running thread. */
