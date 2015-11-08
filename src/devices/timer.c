@@ -195,6 +195,18 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
+	if (thread_mlfqs)
+	{
+		thread_increment_recent_cpu();
+		if (ticks % TIMER_FREQ == 0)
+		{
+			threads_update();
+		} else if (ticks % 4 == 0)
+		{
+			thread_update_priority(thread_current());
+		}
+	}
+
 	while(!list_empty(&sleeping_list))
 	{
 		list_elem = list_front(&sleeping_list);

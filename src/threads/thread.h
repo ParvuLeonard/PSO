@@ -101,7 +101,10 @@ struct thread
     int initial_priority;               /* Thread's initial priority, not altered by donations. */
     struct list acquired_locks;
     struct lock* waiting_on_lock;       /* The lock for which the thread was blocked. */
-
+		
+/* Campurile pe baza carora se calculeaza prioritatile pentru mlfqs */
+		int niceness;
+		int recent_cpu;
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -155,6 +158,14 @@ void thread_reposition_in_ready_list(struct thread*);
 
 /* Function for thread priority comparison */
 list_less_func thread_priority_comparison;
+
+/* Functii pentru mlfqs */
+void thread_update_priority(struct thread *thread);
+void thread_increment_recent_cpu(void);
+void thread_update_recent_cpu(struct thread *thread);
+void threads_update(void);
+
+/* Functie pentru alarm clock */
 bool get_thread_with_less_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */
